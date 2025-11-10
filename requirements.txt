@@ -1,0 +1,4 @@
+openai
+pandas
+PyPDF2
+streamlit

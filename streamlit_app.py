@@ -173,16 +173,25 @@ if uploaded_files and requirement:
             progress_bar.progress((i+1)/len(uploaded_files))
             status_text.text(f"Processed {i+1}/{len(uploaded_files)} resumes")
 
-    # --- Display & download ---
+        # --- Display & download with pagination ---
     if all_data:
         df = pd.DataFrame(all_data)
         df = normalize_for_dataframe(df)  # fix mixed types before Streamlit display
         st.subheader("Extracted CV Data")
-        st.dataframe(df, height=600)
 
+        # Pagination: show 10 rows per page
+        rows_per_page = 10
+        total_pages = (len(df) - 1) // rows_per_page + 1
+        page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
+
+        start_idx = (page_number - 1) * rows_per_page
+        end_idx = start_idx + rows_per_page
+        st.dataframe(df.iloc[start_idx:end_idx], height=600)
+
+        # Download CSV
         output_path = f"extracted_cv_data_{int(time.time())}.csv"
         df.to_csv(output_path, index=False, encoding="utf-8-sig")
         st.download_button("Download CSV", data=open(output_path, "rb"), file_name=output_path)
 
-        cost_usd = total_tokens * 0.03 / 1000  # $0.03 per 1k tokens
-        st.info(f"Total tokens used: {total_tokens} | Estimated cost: ${cost_usd:.4f}")
+        # Show total tokens only
+        st.info(f"Total tokens used: {total_tokens}")

@@ -141,8 +141,9 @@ Respond ONLY with a valid JSON object:
 
 def normalize_for_dataframe(df):
     for col in df.columns:
-        df[col] = df[col].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x is not None else "")
+        df[col] = df[col].apply(lambda x: ", ".join([str(i) for i in x]) if isinstance(x, list) else str(x) if x is not None else "")
     return df
+
 
 
 # Load the logo

@@ -18,7 +18,6 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 # --- HELPER FUNCTIONS ---
 def extract_text_from_pdf(file):
-    """Extract text from uploaded PDF file."""
     text = ""
     try:
         reader = PdfReader(file)
@@ -29,12 +28,10 @@ def extract_text_from_pdf(file):
     return text.strip()
 
 def preprocess_text(text):
-    """Trim text and remove unnecessary whitespace."""
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 def safe_json_extract(text):
-    """Extract the first valid JSON object from text."""
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
         try:
@@ -49,13 +46,11 @@ def safe_json_extract(text):
     return None
 
 def cache_result(file_hash, data):
-    """Save extracted data to cache."""
     path = os.path.join(CACHE_DIR, f"{file_hash}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f)
-        
+
 def load_from_cache(file_hash):
-    """Load extracted data from cache if available."""
     path = os.path.join(CACHE_DIR, f"{file_hash}.json")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -63,7 +58,6 @@ def load_from_cache(file_hash):
     return None
 
 def extract_resume_data(text):
-    """Use GPT to extract structured data from CV text."""
     text = preprocess_text(text)
     prompt = f"""
     You are an expert AI CV parser. Extract structured information from this resume text.
@@ -87,7 +81,7 @@ def extract_resume_data(text):
     Resume Text:
     {text}
     """
-    response = openai.responses.create(model="gpt-4o-mini", input=prompt)  # cheaper, fast model
+    response = openai.responses.create(model="gpt-4o-mini", input=prompt)
     result_text = response.output[0].content[0].text.strip()
     data = safe_json_extract(result_text)
     if not data:
@@ -95,7 +89,6 @@ def extract_resume_data(text):
     return data
 
 def evaluate_suitability(resume_data, requirement):
-    """Use GPT to evaluate suitability for the requirement."""
     prompt = f"""
     Evaluate this candidate for the following job requirement:
     Requirement: "{requirement}"
@@ -113,7 +106,7 @@ def evaluate_suitability(resume_data, requirement):
         "conclusion": "Brief reason for suitability or rejection"
     }}
     """
-    response = openai.responses.create(model="gpt-3.5-turbo", input=prompt)  # cheaper model for evaluation
+    response = openai.responses.create(model="gpt-3.5-turbo", input=prompt)
     result_text = response.output[0].content[0].text.strip()
     decision = safe_json_extract(result_text)
     if not decision:
@@ -121,7 +114,6 @@ def evaluate_suitability(resume_data, requirement):
     return decision
 
 def normalize_for_dataframe(df):
-    """Convert any list-like or None fields to strings to avoid PyArrow errors."""
     for col in df.columns:
         df[col] = df[col].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x is not None else "")
     return df
@@ -132,7 +124,6 @@ if st.button("Clear cached resume data"):
     shutil.rmtree(CACHE_DIR)
     os.makedirs(CACHE_DIR, exist_ok=True)
     st.success("✅ Cache cleared! All resumes will be reprocessed on next run.")
-
 
 # --- MAIN APP ---
 uploaded_files = st.file_uploader("Upload PDF resumes", type="pdf", accept_multiple_files=True)
@@ -145,7 +136,6 @@ if uploaded_files and requirement:
     status_text = st.empty()
 
     def process_file(file):
-        """Process a single CV with caching and token estimation."""
         file_hash = hashlib.md5(file.read()).hexdigest()
         file.seek(0)
         cached = load_from_cache(file_hash)
@@ -159,10 +149,8 @@ if uploaded_files and requirement:
         data["suitable"] = decision.get("suitable", "No")
         data["conclusion"] = decision.get("conclusion", "")
         cache_result(file_hash, data)
-        # Estimate tokens: 750 for extraction + 500 for evaluation
         return data, 1250
 
-    # --- Parallel processing ---
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(process_file, f): f for f in uploaded_files}
         for i, future in enumerate(as_completed(futures)):
@@ -173,25 +161,24 @@ if uploaded_files and requirement:
             progress_bar.progress((i+1)/len(uploaded_files))
             status_text.text(f"Processed {i+1}/{len(uploaded_files)} resumes")
 
-        # --- Display & download with pagination ---
     if all_data:
         df = pd.DataFrame(all_data)
-        df = normalize_for_dataframe(df)  # fix mixed types before Streamlit display
+        df = normalize_for_dataframe(df)
         st.subheader("Extracted CV Data")
 
-        # Pagination: show 10 rows per page
+        # --- Pagination: 10 CVs per page ---
         rows_per_page = 10
         total_pages = (len(df) - 1) // rows_per_page + 1
         page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
 
         start_idx = (page_number - 1) * rows_per_page
         end_idx = start_idx + rows_per_page
-        st.dataframe(df.iloc[start_idx:end_idx], height=600)
+        st.dataframe(df.iloc[start_idx:end_idx].reset_index(drop=True), height=600)
 
-        # Download CSV
+        # --- Download CSV ---
         output_path = f"extracted_cv_data_{int(time.time())}.csv"
         df.to_csv(output_path, index=False, encoding="utf-8-sig")
         st.download_button("Download CSV", data=open(output_path, "rb"), file_name=output_path)
 
-        # Show total tokens only
+        # --- Show tokens only ---
         st.info(f"Total tokens used: {total_tokens}")
